@@ -8,7 +8,7 @@
   #password is "password"
     ubuntu_password_hash: '$6$J.SECFrKRPynkbgA$p5FCYSTNuJHy4Htphh0wFvnTuK7aO5DptUFP..VNt7f5m2Sl9wXbFXbwSuyy.9Tb.AQqCDN8Bx/51/8ks1vCp.'
   #password is "superSecurePasswdlol"
-    tempsvc_password_hash: '$6$15HkOZOG4jaex33Y$pa2du1J5.qJTGyEgxaSEW7Hetm18AICwnBhHAec/sx9ECI/SVRPZUVC2Zlpx/QPr8ZE3KqRIZkIOb2H.Tdl1i0
+    tempsvc_password_hash: '$6$15HkOZOG4jaex33Y$pa2du1J5.qJTGyEgxaSEW7Hetm18AICwnBhHAec/sx9ECI/SVRPZUVC2Zlpx/QPr8ZE3KqRIZkIOb2H.Tdl1i0'
     mysql_socket: /run/mysqld/mysqld.sock
 
   tasks:
@@ -168,7 +168,7 @@
         login_unix_socket: "{{ mysql_socket }}"
 
   handlers:
-    - name: restart ssh
+    - name: Restart ssh
       ansible.builtin.systemd:
         name: ssh
         state: restarted
