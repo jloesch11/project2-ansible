@@ -1,0 +1,174 @@
+- name: Harden vuln box
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+
+  vars:
+  #password is "password"
+    ubuntu_password_hash: '$6$J.SECFrKRPynkbgA$p5FCYSTNuJHy4Htphh0wFvnTuK7aO5DptUFP..VNt7f5m2Sl9wXbFXbwSuyy.9Tb.AQqCDN8Bx/51/8ks1vCp.'
+  #password is "superSecurePasswdlol"
+    tempsvc_password_hash: '$6$15HkOZOG4jaex33Y$pa2du1J5.qJTGyEgxaSEW7Hetm18AICwnBhHAec/sx9ECI/SVRPZUVC2Zlpx/QPr8ZE3KqRIZkIOb2H.Tdl1i0
+    mysql_socket: /run/mysqld/mysqld.sock
+
+  tasks:
+
+
+#
+    - name: remove dorp in files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/ssh/sshd_config.d/60-cloudimg-settings.conf
+        - /etc/ssh/sshd_config.d/99-course.conf
+      notify: Restart ssh
+
+    - name: set ssh options
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?\s*{{ item }}\s'
+        line: '{{ item }} no'
+      loop:
+        - PermitRootLogin
+        - PasswordAuthentication
+      notify: Restart ssh
+
+#
+    - name: deny incoming
+      community.general.ufw:
+        default: deny
+        direction: incoming
+
+    - name: allow outgoing
+      community.general.ufw:
+        default: allow
+        direction: outgoing
+
+    - name: allow port 22
+      community.general.ufw:
+        rule: allow
+        port: '22'
+        proto: tcp
+
+    - name: enable UFW
+      community.general.ufw:
+        state: enabled
+
+#
+    - name: remove cron job
+      ansible.builtin.file:
+        path: /etc/cron.d/cache-warm
+        state: absent
+
+#
+    - name: disable telnet
+      ansible.builtin.systemd:
+        name: telnet.service
+        state: stopped
+        enabled: false
+#
+    - name: install fail2ban
+      ansible.builtin.apt:
+        name: fail2ban
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: start fail2ban
+      ansible.builtin.systemd:
+        name: fail2ban
+        state: started
+        enabled: true
+
+#
+    - name: restrict cache
+      ansible.builtin.file:
+        path: /var/www/html/cache
+        state: directory
+        mode: '0755'
+
+#
+    - name: check helpdesk membership
+      ansible.builtin.command: id -nG helpdesk
+      register: helpdesk_groups
+      changed_when: false
+      failed_when: false
+
+    - name: remove helpdesk from sudo
+      ansible.builtin.command: gpasswd -d helpdesk sudo
+      when: "'sudo' in helpdesk_groups.stdout.split()"
+
+#
+    - name: set passwd
+      ansible.builtin.user:
+        name: ubuntu
+        password: "{{ ubuntu_password_hash }}"
+
+    - name: remove NOPASSWD
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/sudoers.d/90-course-nopasswd
+        - /etc/sudoers.d/90-cloud-init-users
+
+#
+    - name: remove SUID
+      ansible.builtin.file:
+        path: /usr/local/bin/netcheck
+        state: absent
+
+#
+    - name: set password for tempsvc
+      ansible.builtin.user:
+        name: tempsvc
+        password: "{{ tempsvc_password_hash }}"
+
+#
+    - name: restrict config files
+      ansible.builtin.file:
+        path: /opt/app/config.yml
+        mode: '0600'
+
+#
+    - name: install python for mysql
+      ansible.builtin.apt:
+        name: python3-pymysql
+        state: present
+
+    - name: limit webapp to read/write on portaldb
+      community.mysql.mysql_user:
+        name: webapp
+        host: '%'
+        priv: 'portaldb.*:SELECT,INSERT,UPDATE,DELETE'
+        append_privs: false
+        login_unix_socket: "{{ mysql_socket }}"
+
+    - name: limit reporting to read-only on portaldb
+      community.mysql.mysql_user:
+        name: reporting
+        host: '%'
+        priv: 'portaldb.*:SELECT'
+        append_privs: false
+        login_unix_socket: "{{ mysql_socket }}"
+
+    - name: drop root from any host
+      community.mysql.mysql_user:
+        name: root
+        host: '%'
+        state: absent
+        login_unix_socket: "{{ mysql_socket }}"
+
+    - name: drop anonymous account
+      community.mysql.mysql_user:
+        name: ''
+        host: localhost
+        state: absent
+        login_unix_socket: "{{ mysql_socket }}"
+
+  handlers:
+    - name: restart ssh
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
