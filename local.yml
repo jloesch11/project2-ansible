@@ -68,12 +68,12 @@
         state: stopped
         enabled: false
 #
-    - name: install fail2ban
-      ansible.builtin.apt:
-        name: fail2ban
-        state: present
-        update_cache: true
-        cache_valid_time: 3600
+    - name: install fail2ban and mysql python driver
+      ansible.builtin.command: apt-get install -y fail2ban python3-pymysql
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      register: apt_out
+      changed_when: "'0 newly installed' not in apt_out.stdout"
 
     - name: start fail2ban
       ansible.builtin.systemd:
@@ -132,11 +132,6 @@
         mode: '0600'
 
 #
-    - name: install python for mysql
-      ansible.builtin.apt:
-        name: python3-pymysql
-        state: present
-
     - name: limit webapp to read/write on portaldb
       community.mysql.mysql_user:
         name: webapp
